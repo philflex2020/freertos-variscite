@@ -6,6 +6,17 @@
  * SPDX-License-Identifier: BSD-3-Clause
  
  ARMGCC_DIR=/home/phil/work/var-mcuexpresso/gcc-arm-none-eabi-10-2020-q4-major
+ scp debug/hello_boot.elf root@192.168.86.34:/lib/firmware
+ 
+ root@imx93-var-som:/sys/class/remoteproc/remoteproc0# echo stop > state
+ root@imx93-var-som:/sys/class/remoteproc/remoteproc0# echo hello_boot.elf > firmware
+ root@imx93-var-som:/sys/class/remoteproc/remoteproc0# echo start > state
+
+[ 4718.324395] remoteproc remoteproc0: powering up imx-rproc
+[ 4718.330296] remoteproc remoteproc0: Booting fw image hello_boot.elf, size 275692
+[ 4718.337796] remoteproc remoteproc0: header-less resource table
+[ 4718.343645] remoteproc remoteproc0: No resource table in elf
+[ 4718.876177] remoteproc remoteproc0: remote processor imx-rproc is now up
 
  */
 
@@ -32,6 +43,24 @@
 char buffer[BUFFER_SIZE];
 int buf_idx;
 
+
+void display_memory(unsigned long addr, int size)
+{
+    int i, j;
+    unsigned char *ptr;
+
+    for (i = 0; i < size; i++)
+    {
+        ptr = (unsigned char *)(addr + i * 16);
+        PRINTF("0x%08lX: ", (unsigned long)ptr);
+
+        for (j = 0; j < 16; j++)
+        {
+            PRINTF("%02X ", ptr[j]);
+        }
+        PRINTF("\r\n");
+    }
+}
 /*!
  * @brief Main function
  */
@@ -74,6 +103,16 @@ int main(void)
                 }
 
                 PRINTF("Decoded command: mem 0x%08lX %d\r\n", addr, size);
+                // Display memory if address is >= 0x80000000
+                if (addr >= 0x80000000)
+                {
+                    display_memory(addr, size);
+                }
+                else
+                {
+                    PRINTF("Address must be >= 0x80000000\r\n");
+                }
+
             }
             buf_idx = 0;  // Reset index for next input
         }
