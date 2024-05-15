@@ -74,6 +74,8 @@ int main(void)
     BOARD_InitDebugConsole();
 
     PRINTF("hello boot.\r\n");
+    // Display the address of the main function
+    PRINTF("Address of main: 0x%08lX\r\n", (unsigned long)main);
 
     while (1)
     {
@@ -104,13 +106,13 @@ int main(void)
 
                 PRINTF("Decoded command: mem 0x%08lX %d\r\n", addr, size);
                 // Display memory if address is >= 0x80000000
-                if (addr >= 0x80000000)
+                if (addr >= 0x00000000)
                 {
                     display_memory(addr, size);
                 }
                 else
                 {
-                    PRINTF("Address must be >= 0x80000000\r\n");
+                    PRINTF("Address must be >= 0x00000000\r\n");
                 }
 
             }
