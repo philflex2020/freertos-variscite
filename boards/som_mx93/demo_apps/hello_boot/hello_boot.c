@@ -5,18 +5,38 @@
  *
  * SPDX-License-Identifier: BSD-3-Clause
  
- ARMGCC_DIR=/home/phil/work/var-mcuexpresso/gcc-arm-none-eabi-10-2020-q4-major
+ export ARMGCC_DIR=/home/phil/work/var-mcuexpresso/gcc-arm-none-eabi-10-2020-q4-major
  scp debug/hello_boot.elf root@192.168.86.34:/lib/firmware
  
  root@imx93-var-som:/sys/class/remoteproc/remoteproc0# echo stop > state
  root@imx93-var-som:/sys/class/remoteproc/remoteproc0# echo hello_boot.elf > firmware
  root@imx93-var-som:/sys/class/remoteproc/remoteproc0# echo start > state
 
+ load mmc ${mmcdev}:${mmcpart} ${loadaddr} ${bootdir}/${bootenv}
+
+
+ load mmc 0:1  87d80000 /boot/hello_app.elf
+ load mmc 1:1  87d80000 /boot/hello_app.elf
+ 
+ md  87d80000 32
+
+
+
 [ 4718.324395] remoteproc remoteproc0: powering up imx-rproc
 [ 4718.330296] remoteproc remoteproc0: Booting fw image hello_boot.elf, size 275692
 [ 4718.337796] remoteproc remoteproc0: header-less resource table
 [ 4718.343645] remoteproc remoteproc0: No resource table in elf
 [ 4718.876177] remoteproc remoteproc0: remote processor imx-rproc is now up
+
+this code starts the  core.
+from imx_rproc stuff.
+
+if (ret)
+			dev_err(dev, "Failed to enable audio clk!\n");
+		arm_smccc_smc(IMX_SIP_RPROC, IMX_SIP_RPROC_START, rproc->bootaddr,
+			      0, 0, 0, 0, 0, &res);
+		ret = res.a0;
+
 
  */
 
@@ -39,6 +59,8 @@
 /*******************************************************************************
  * Code
  ******************************************************************************/
+int load_elf_buffer(char *buffer, void *load_addr, int mem_size);
+
 #define BUFFER_SIZE 64
 char buffer[BUFFER_SIZE];
 int buf_idx;
@@ -73,7 +95,9 @@ int main(void)
     BOARD_BootClockRUN();
     BOARD_InitDebugConsole();
 
-    PRINTF("hello boot.\r\n");
+    PRINTF("i.MX93 Boot Loader.\r\n");
+    PRINTF("Address of Shared Memory : 0x%08lX\r\n", (unsigned long)0x87d80000);
+
     // Display the address of the main function
     PRINTF("Address of main: 0x%08lX\r\n", (unsigned long)main);
 
@@ -86,6 +110,7 @@ int main(void)
             PRINTF("\r\nBuffer contents: [%s]\r\n", buffer);
             if (strncmp(buffer, "mem", 3) == 0)
             {
+       
                 char *token;
                 unsigned long addr = 0;
                 int size = 0;
@@ -116,6 +141,30 @@ int main(void)
                 }
 
             }
+            else if (strncmp(buffer, "load_elf", 8) == 0)
+            {
+                PRINTF("Load Elf starting \r\n");
+                // get the addr
+                char *token;
+                unsigned long addr = 0;
+                //int size = 0;
+
+                // Tokenize the input
+                token = strtok(buffer, " ");
+                token = strtok(NULL, " ");  // Get the address
+                if (token)
+                {
+                    addr = strtoul(token, NULL, 16);  // Convert hex address to unsigned long
+                }
+                if (addr)
+                {
+                    PRINTF("Elf object at 0x%08lX\r\n", addr);
+                }
+                load_elf_buffer((char *)addr, 0x0, 0x1000000);
+
+
+            }
+
             buf_idx = 0;  // Reset index for next input
         }
         else if (buf_idx < BUFFER_SIZE - 1)

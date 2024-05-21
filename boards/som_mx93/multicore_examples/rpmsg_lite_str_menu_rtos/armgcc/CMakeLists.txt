@@ -22,11 +22,11 @@ SET(EXECUTABLE_OUTPUT_PATH ${ProjDirPath}/${CMAKE_BUILD_TYPE})
 SET(LIBRARY_OUTPUT_PATH ${ProjDirPath}/${CMAKE_BUILD_TYPE})
 
 
-project(hello_boot)
+project(rpmsg_lite_str_menu_rtos_imxcm33)
 
 set(MCUX_BUILD_TYPES debug release)
 
-set(MCUX_SDK_PROJECT_NAME hello_boot.elf)
+set(MCUX_SDK_PROJECT_NAME rpmsg_lite_str_menu_rtos_imxcm33.elf)
 
 if (NOT DEFINED SdkRootDirPath)
     SET(SdkRootDirPath ${ProjDirPath}/../../../../..)
@@ -37,15 +37,18 @@ include(${ProjDirPath}/flags.cmake)
 include(${ProjDirPath}/config.cmake)
 
 add_executable(${MCUX_SDK_PROJECT_NAME} 
-"${ProjDirPath}/../hello_boot.c"
+"${ProjDirPath}/../main_remote.c"
+"${ProjDirPath}/../FreeRTOSConfig.h"
 "${ProjDirPath}/../pin_mux.c"
 "${ProjDirPath}/../pin_mux.h"
+"${ProjDirPath}/../rpmsg_config.h"
+"${ProjDirPath}/../rsc_table.c"
+"${ProjDirPath}/../rsc_table.h"
+"${ProjDirPath}/../remoteproc.h"
 "${ProjDirPath}/../board.c"
 "${ProjDirPath}/../board.h"
 "${ProjDirPath}/../clock_config.c"
 "${ProjDirPath}/../clock_config.h"
-"${ProjDirPath}/../elf_loader.h"
-"${ProjDirPath}/../elf_loader.c"
 )
 
 target_include_directories(${MCUX_SDK_PROJECT_NAME} PUBLIC
@@ -53,6 +56,8 @@ target_include_directories(${MCUX_SDK_PROJECT_NAME} PUBLIC
 )
 
 set(CMAKE_MODULE_PATH
+    ${SdkRootDirPath}/middleware/multicore
+    ${SdkRootDirPath}/rtos/freertos/freertos-kernel
     ${SdkRootDirPath}/devices/MIMX9352/drivers
     ${SdkRootDirPath}/devices/MIMX9352
     ${SdkRootDirPath}/devices/MIMX9352/utilities
@@ -63,7 +68,23 @@ set(CMAKE_MODULE_PATH
 )
 
 # include modules
+include(middleware_multicore_rpmsg_lite_imx93_m33_freertos_MIMX9352)
+
+include(middleware_multicore_rpmsg_lite_MIMX9352)
+
+include(middleware_multicore_rpmsg_lite_freertos_MIMX9352)
+
+include(middleware_freertos-kernel_heap_4_MIMX9352)
+
+include(middleware_freertos-kernel_cm33_nonsecure_port_MIMX9352)
+
+include(driver_mu1_MIMX9352)
+
+include(driver_rgpio_MIMX9352)
+
 include(driver_clock_MIMX9352)
+
+include(middleware_freertos-kernel_MIMX9352)
 
 include(driver_common_MIMX9352)
 
@@ -87,15 +108,15 @@ include(device_MIMX9352_startup_MIMX9352)
 
 include(driver_iomuxc_MIMX9352)
 
-include(driver_rgpio_MIMX9352)
-
 include(driver_cache_xcache_MIMX9352)
 
 include(driver_sentinel_MIMX9352)
 
-include(utilities_misc_utilities_MIMX9352)
+include(middleware_freertos-kernel_extension_MIMX9352)
 
 include(CMSIS_Include_core_cm_MIMX9352)
+
+include(utilities_misc_utilities_MIMX9352)
 
 
 IF(NOT DEFINED TARGET_LINK_SYSTEM_LIBRARIES)  
@@ -109,5 +130,5 @@ target_link_libraries(${MCUX_SDK_PROJECT_NAME} PRIVATE ${TARGET_LINK_SYSTEM_LIBR
 TARGET_LINK_LIBRARIES(${MCUX_SDK_PROJECT_NAME} PRIVATE -Wl,--end-group)
 
 ADD_CUSTOM_COMMAND(TARGET ${MCUX_SDK_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_OBJCOPY}
--Obinary ${EXECUTABLE_OUTPUT_PATH}/${MCUX_SDK_PROJECT_NAME} ${EXECUTABLE_OUTPUT_PATH}/hello_boot.bin)
+-Obinary ${EXECUTABLE_OUTPUT_PATH}/${MCUX_SDK_PROJECT_NAME} ${EXECUTABLE_OUTPUT_PATH}/rpmsg_lite_str_menu_rtos.bin)
 
