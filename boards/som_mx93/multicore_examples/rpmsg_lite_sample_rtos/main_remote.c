@@ -180,12 +180,12 @@ void setDataSequence(uint16_t seq)
 // Function to set cell voltage with random fluctuation
 void setCellVoltage(uint16_t module_num, uint16_t cell_num, int16_t voltage) {
     // Ensure the module_num and cell_num are within bounds (add bounds checking if necessary)
-    
+    int rand_val = 256;
     // Generate a random fluctuation between 0 and 1 (scaled from 0 to 100 and divided by 100.0)
-    float random_fluctuation = rand16(100) / 100.0f;
+    int16_t random_fluctuation = rand16(rand_val);
     
     // Calculate the new voltage with the random fluctuation
-    int16_t new_voltage = voltage + (int16_t)(random_fluctuation * 100.0f); // Ensure proper scaling and rounding
+    int16_t new_voltage = voltage - rand_val +  random_fluctuation; // Ensure proper scaling and rounding
     
     // Set the voltage for the specified cell
     cell_data[module_num]->cells[cell_num].voltage = new_voltage;
