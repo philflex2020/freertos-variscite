@@ -39,6 +39,7 @@
 #include "fsl_debug_console.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "bms_system_rtos.h"
 
 //#include "fsl_uart.h"
 #include "rsc_table.h"
@@ -46,7 +47,7 @@
 
 //(unsigned long)buf_addr = (unsigned long)
 
-#define BUFF_ADDR 0x87d80000
+//#define BUFF_ADDR 0x87d80000
 
 
 // build:  in yocto devtool build freertos-variscite
@@ -94,16 +95,16 @@ static char app_buf[512]; /* Each RPMSG buffer can carry less than 512 payload *
 static int counter = 0;
 
 
-// todo import bms_data.h
+//import bms_system_rtos.h
 
 // Data Structures
 // Define constants for data structure sizes
-#define CELL_COUNT 110
-#define TEMP_COUNT 32
+// #define CELL_COUNT 110
+// #define TEMP_COUNT 32
 
-// Data structure for the header
-#define MODULE_COUNT 4
-#define RACK_NUM 3
+// // Data structure for the header
+// #define MODULE_COUNT 4
+// #define RACK_NUM 3
 
 // rack num is given to us from an incoming message
 typedef struct {
@@ -136,35 +137,11 @@ typedef struct {
     uint8_t payload[MAX_PAYLOAD_SIZE];
 } DataObject;
 
-// this is a specific type of payload  for a module
-//  Module Status
-typedef struct {
-    uint16_t state;
-    uint16_t soh;
-} ModuleStatus;
-
-// Data structure for cell data
-typedef struct {
-    uint16_t voltage;
-    uint16_t soc;
-} CellData;
-
-// Data structure for temperature data
-typedef struct {
-    uint16_t temperature;
-} TempData;
-
-// Data structure for cell and temperature payload
-typedef struct {
-    ModuleStatus status;
-    CellData cells[CELL_COUNT];
-    TempData temps[TEMP_COUNT];
-} CellPayload;
 
 
 
 DataObject unit_data[MODULE_COUNT];
-CellPayload  *cell_data[MODULE_COUNT];
+//CellPayload  *cell_data[MODULE_COUNT];
 DataHeader    *cell_header[MODULE_COUNT];
 
 //static uint32_t seed = 12345; // Seed value for the PRNG
@@ -220,48 +197,155 @@ void update_memory(unsigned long addr, int offset , int16_t value)
 //     // Return a 16-bit random number
 //     return (uint16_t)(seed >> 16);
 // }
+
+// OK we pick up blob shared memory at BUFF_ADDR
+//Ths points to an array  of 4 Module Items  ( lets hope its big enough)
+// Data structure for Module payload
+// typedef struct {
+//     int message_id;
+//     int rack_id;
+//     int module_id;
+//     int cell_id;
+//     ModuleStatus status;
+//     CellData cells[CELL_COUNT];
+//     TempData temps[TEMP_COUNT];
+// } ModulePayload;
+
+    	// blob_reserved: blob_reserved@87d80000 {
+        // 	compatible = "shared-dma-pool";
+        // 	reg = <0 0x87d80000 0 0x40000>;  // 256 KB 262144 bytes
+        // 	no-map;
+    	// };
+
+#define BUFF_COUNT 16
+
+RackPayload *rack_payloads = (RackPayload *)BUFF_ADDR;
+
+
+void init_module_payload(ModulePayload* payload, int rack_id, int module_id)
+{
+    payload->message_id = 0;
+    payload->rack_id = rack_id;
+    payload->module_id = module_id;
+    payload->cell_id = -1; // we are getting the whole cell data
+    for (int i = 0 ; i < CELL_COUNT; i++) {
+        payload->cells[i].voltage = 321*100;
+        payload->cells[i].soc = 100*100;
+
+    }
+    for (int i = 0 ; i < TEMP_COUNT; i++) {
+        payload->temps[i].temperature = 25*1000;
+    }
+
+}
+
+void process_module_payload(ModulePayload* payload, int rack_id, int module_id)
+{
+    int rand_val = 256;
+    // Generate a random fluctuation between 0 and 1 (scaled from 0 to 100 and divided by 100.0)
+    int16_t random_fluctuation; // = rand16(rand_val);
+    int16_t new_voltage;
+    payload->message_id = 0;
+    payload->rack_id = rack_id;
+    payload->module_id = module_id;
+    payload->cell_id = -1; // we are getting the whole cell data
+    for (int i = 0 ; i < CELL_COUNT; i++) {
+        random_fluctuation = rand16(rand_val);
+        new_voltage = payload->cells[i].voltage - rand_val +  random_fluctuation; // Ensure proper scaling and rounding
+        payload->cells[i].voltage = new_voltage;
+        payload->cells[i].soc = 100*100;
+    }
+    for (int i = 0 ; i < TEMP_COUNT; i++) {
+        payload->temps[i].temperature = 25*1000;
+    }
+
+}
+
+void init_rack_payload(RackPayload* payload, int idx, int rack_id)
+{
+    payload->message_id = idx;
+    payload->rack_id = rack_id;
+    //payload->module_id = module_id;
+    //payload->cell_id = -1; // we are getting the whole cell data
+    for (int i = 0 ; i < MODULE_COUNT; i++) {
+        init_module_payload(&payload->modules[i], rack_id, i);
+    }
+} 
+
+void process_rack_payload(RackPayload* payload, int idx, int rack_id)
+{
+    payload->message_id = idx;
+    payload->rack_id = rack_id;
+    //payload->module_id = module_id;
+    //payload->cell_id = -1; // we are getting the whole cell data
+    for (int i = 0 ; i < MODULE_COUNT; i++) {
+        process_module_payload(&payload->modules[i], rack_id, i);
+    }
+} 
+
+// use BUFF_COUNT
+// send this in the message  &rack_payloads[i]
+// each lump is , currently , 3144 bytes longnthe rpmsg_rack_data module has to deal with this.
+
+// RPMSG FreeRTOS setting up rack payload at 87D80000 ...
+// RPMSG FreeRTOS setting up rack payload at 87D80C48 ...
+// RPMSG FreeRTOS setting up rack payload at 87D81890 ...
+// RPMSG FreeRTOS setting up rack payload at 87D824D8 ...
+// RPMSG FreeRTOS setting up rack payload at 87D83120 ...
+// RPMSG FreeRTOS setting up rack payload at 87D83D68 ...
+// RPMSG FreeRTOS setting up rack payload at 87D849B0 ...
+// RPMSG FreeRTOS setting up rack payload at 87D855F8 ...
+// RPMSG FreeRTOS setting up rack payload at 87D86240 ...
+// RPMSG FreeRTOS setting up rack payload at 87D86E88 ...
+// RPMSG FreeRTOS setting up rack payload at 87D87AD0 ...
+// RPMSG FreeRTOS setting up rack payload at 87D88718 ...
+// RPMSG FreeRTOS setting up rack payload at 87D89360 ...
+// RPMSG FreeRTOS setting up rack payload at 87D89FA8 ...
+// RPMSG FreeRTOS setting up rack payload at 87D8ABF0 ...
+// RPMSG FreeRTOS setting up rack payload at 87D8B838 ...
+
+// this just configures one data area we really need a series of these buffers
 void initData(int rack_num)
 {
-    for (int i = 0; i<MODULE_COUNT ; i++)
+    //int rack_id = 2; //get this from the hello message
+    for (int i = 0; i<BUFF_COUNT ; i++)
     {
-        cell_header[i] = (DataHeader*)&unit_data[i];
-        cell_header[i]->rack_num = rack_num;
-        cell_header[i]->module_num = i;
-        cell_header[i]->data_type  = 0;
-        cell_data[i] = (CellPayload*)&unit_data[i].payload;
+        PRINTF("\r\nRPMSG FreeRTOS setting up rack payload at %p ...",&rack_payloads[i]);
+        init_rack_payload(&rack_payloads[i],i, rack_num);
     }
+    PRINTF("\r\n");
 }
 
 void setDataSequence(uint16_t seq)
 {
     for (int i = 0; i<MODULE_COUNT ; i++)
     {
-        cell_header[i]->sequence = seq;
+        // cell_header[i]->sequence = seq;
     }
 }
 
-// Function to set cell voltage with random fluctuation
-void setCellVoltage(uint16_t module_num, uint16_t cell_num, int16_t voltage) {
-    // Ensure the module_num and cell_num are within bounds (add bounds checking if necessary)
-    int rand_val = 256;
-    // Generate a random fluctuation between 0 and 1 (scaled from 0 to 100 and divided by 100.0)
-    int16_t random_fluctuation = rand16(rand_val);
+// // Function to set cell voltage with random fluctuation
+// void setCellVoltage(uint16_t module_num, uint16_t cell_num, int16_t voltage) {
+//     // Ensure the module_num and cell_num are within bounds (add bounds checking if necessary)
+//     int rand_val = 256;
+//     // Generate a random fluctuation between 0 and 1 (scaled from 0 to 100 and divided by 100.0)
+//     int16_t random_fluctuation = rand16(rand_val);
     
-    // Calculate the new voltage with the random fluctuation
-    int16_t new_voltage = voltage - rand_val +  random_fluctuation; // Ensure proper scaling and rounding
+//     // Calculate the new voltage with the random fluctuation
+//     int16_t new_voltage = voltage - rand_val +  random_fluctuation; // Ensure proper scaling and rounding
     
-    // Set the voltage for the specified cell
-    cell_data[module_num]->cells[cell_num].voltage = new_voltage;
-}
+//     // Set the voltage for the specified cell
+//     cell_data[module_num]->cells[cell_num].voltage = new_voltage;
+// }
 // void setCellVoltage(uint16_t module_num,uint16_t cell_num, int16_t voltage)
 // {
 //     cell_data[module_num]->cells[cell_num].voltage = uint16_t(voltage + rand16(100)/100.0);
 // }
 
-void setCellSoc(uint16_t module_num,uint16_t cell_num, int16_t soc)
-{
-    cell_data[module_num]->cells[cell_num].soc = soc;
-}
+// void setCellSoc(uint16_t module_num,uint16_t cell_num, int16_t soc)
+// {
+//     cell_data[module_num]->cells[cell_num].soc = soc;
+// }
 
 // int main() {
 //     // Create a data object
@@ -339,7 +423,7 @@ void data_task(void *param)
 {
     void *tx_buf;
     void *rx_buf;
-    int16_t *tx_regs;
+    int32_t *tx_regs;
     uint32_t len;
     //int tx_size = 512;
     uint32_t size;
@@ -347,9 +431,12 @@ void data_task(void *param)
     volatile uint32_t data_remote_addr;
     bool first =  false;
     uint16_t seq = 0;
+    int buff_num = 0;
+    int rack_id = 2;
 
-    PRINTF("\r\nRPMSG FreeRTOS RTOS API Demo Data Task v1.0 ...\r\n");
-    initData(2); // this sets the rack number as 2 
+
+    PRINTF("RPMSG FreeRTOS RTOS API Data Task v1.0 ...\r\n");
+    initData(rack_id); // this sets the rack number as 2 
 
     for (;;)
     {
@@ -402,29 +489,31 @@ void data_task(void *param)
             if(counter%5 == 0)
             {
                 PRINTF("\r\nRPMSG Tick... %d \n", counter);
-                //setDataSequence(seq++);
-                for (int i = 0 ; i < MODULE_COUNT; i++)
-                {
-                     // wrap this all up
-                    tx_buf = rpmsg_lite_alloc_tx_buffer(my_rpmsg, &size, RL_BLOCK);
-                    assert(tx_buf);
-                    if (seq < 50)
-                    {
-                        /* Copy data RPMsg tx buffer  this is expensive so just do it for the first 50 samples */
-                        memcpy(tx_buf, &unit_data[i], size);
-                    }
-                    update_memory(BUFF_ADDR, 0, seq);
 
-                    // now populate the buffers normally
-                    tx_regs = (int16_t *)tx_buf;
-                    tx_regs[0] = (int16_t)counter%(256*256);
-                    tx_regs[1] = seq++;
-                    tx_regs[2] = i;
-                    tx_regs[3] = 0;
+                // set up the message data in &rack_payloads[buff_num] where buff_num goes from 0 to BUFF_COUNT
+
+                RackPayload* rack_payload = &rack_payloads[buff_num];
+                process_rack_payload(rack_payload, seq, rack_id);
+                
+
+
+                // wrap this all up
+                tx_buf = rpmsg_lite_alloc_tx_buffer(my_rpmsg, &size, RL_BLOCK);
+                assert(tx_buf);
+                
+                //update_memory(BUFF_ADDR, 0, seq);
+
+                // now populate the buffers normally
+                tx_regs = (int32_t *)tx_buf;
+                tx_regs[0] = (int32_t)counter;
+                tx_regs[1] = seq++;
+                tx_regs[2] = buff_num;
+                tx_regs[3] = (int32_t)(buff_num * sizeof(RackPayload)); // we need the offfset from the start of shared memory
                     
-                    result = rpmsg_lite_send_nocopy(my_rpmsg, my_data_ept, data_remote_addr, tx_buf, size);
-                    //PRINTF("    RPMSG Send Result... %d  size %d \r\n", result, size);
-                }
+                buff_num = (buff_num+1) % BUFF_COUNT;
+                result = rpmsg_lite_send_nocopy(my_rpmsg, my_data_ept, data_remote_addr, tx_buf, size);
+                //PRINTF("    RPMSG Send Result... %d  size %d \r\n", result, size);
+                
            }
         }
     }

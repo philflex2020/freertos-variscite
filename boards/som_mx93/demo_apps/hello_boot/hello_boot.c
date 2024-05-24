@@ -162,7 +162,6 @@ int main(void)
                 }
                 load_elf_buffer((char *)addr, 0x0, 0x1000000);
 
-
             }
 
             buf_idx = 0;  // Reset index for next input
