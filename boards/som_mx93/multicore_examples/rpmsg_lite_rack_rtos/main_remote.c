@@ -9,7 +9,7 @@
 // export ARMGCC_DIR=/home/phil/work/var-mcuexpresso/gcc-arm-none-eabi-10-2020-q4-major
 // cd work/philflex/freertos-variscite/boards/som_mx93/multicore_examples/rpmsg_lite_sample_rtos/armgcc
 // sh build_all.sh
-// scp debug/rpmsg_lite_sample_rtos.elf root@192.168.86.34:/lib/firmware
+// scp debug/rpmsg_lite_rack_rtos.elf root@192.168.86.34:/lib/firmware
 // on the remote root@192.168.86.34
 // cd /sys/class/remoteproc/remoteproc0
 // echo rpmsg_lite_sample_rtos.elf > firmware
@@ -54,11 +54,14 @@
 
 // build out of yocto
 // ARMGCC_DIR=
+//cd ~/work/philflex/freertos-variscite/boards/som_mx93/multicore_examples/rpmsg_lite_sample_rtos/armgcc/
+
 //export ARMGCC_DIR=/home/phil/work/var-mcuexpresso/gcc-arm-none-eabi-10-2020-q4-major
 // sh build_all.sh
-
-// cd  /home/phil/work/philflex/freertos-variscite/boards/som_mx93/multicore_examples/rpmsg_lite_sample_rtos/armgcc
-// deploy:  scp ./workspace/sources/freertos-variscite/boards/som_mx8mp/multicore_examples/rpmsg_lite_str_menu_rtos/armgcc/debug/rpmsg_lite_str_menu_rtos.bin root@192.168.86.28:/boot
+//scp debug/rpmsg_lite_sample_rtos.elf root@192.168.86.34:/lib/firmware
+//root@imx93-var-som:/sys/class/remoteproc/remoteproc0# echo stop > state
+//root@imx93-var-som:/sys/class/remoteproc/remoteproc0# echo  rpmsg_lite_rack_rtos.elf > firmware
+//root@imx93-var-som:/sys/class/remoteproc/remoteproc0# echo start > state
 // run : insmod /boot/imx_rpmsg_tty.ko
 //        insmod /boot/rpmsg_sample.ko
 // new target
@@ -119,13 +122,24 @@ typedef struct {
 
 static MySys mySys;
 
+//we send 
+                //   sequence counter
+                //        data type
+                //        rack_id
+                //        data base
+                //        buff_num ( used to be seq)
+                //        offset into data area
+                //        data  size
 
 // rack num is given to us from an incoming message
 typedef struct {
-    uint16_t sequence;
-    uint8_t rack_num;
-    uint8_t module_num;
-    uint8_t data_type;
+    uint32_t sequence;
+    uint32_t data_type;
+    uint32_t rack_id;
+    uint32_t data_base;
+    uint32_t buff_num;
+    uint32_t offset;
+    uint32_t data_size;
 } DataHeader;
 
 // Define the maximum payload size
@@ -241,10 +255,14 @@ void init_module_payload(ModulePayload* payload, int rack_id, int module_id)
 
 void process_module_payload(ModulePayload* payload, int rack_id, int module_id)
 {
+
     int rand_val = 256;
+
     // Generate a random fluctuation between 0 and 1 (scaled from 0 to 100 and divided by 100.0)
     int16_t random_fluctuation; // = rand16(rand_val);
     int16_t new_voltage;
+    payload->seq_id = 666;
+
     payload->message_id = 0;
     payload->rack_id = rack_id;
     payload->module_id = module_id;
@@ -254,6 +272,17 @@ void process_module_payload(ModulePayload* payload, int rack_id, int module_id)
         new_voltage = payload->cells[i].voltage - rand_val +  random_fluctuation; // Ensure proper scaling and rounding
         payload->cells[i].voltage = new_voltage;
         payload->cells[i].soc = 100*100;
+    //     if(i == 0)
+    //     {
+    //         payload->cells[i].voltage = 12300;
+    //         payload->cells[i].soc = 456;
+    //     }
+    //    if(i == 1)
+    //     {
+    //         payload->cells[i].voltage = 45600;
+    //         payload->cells[i].soc = 789;
+    //     }
+
     }
     for (int i = 0 ; i < TEMP_COUNT; i++) {
         payload->temps[i].temperature = 25*1000;
@@ -263,6 +292,7 @@ void process_module_payload(ModulePayload* payload, int rack_id, int module_id)
 
 void init_rack_payload(RackPayload* payload, int idx, int rack_id)
 {
+    payload->seq_id = 0x666 + idx;
     payload->message_id = idx;
     payload->rack_id = rack_id;
     //payload->module_id = module_id;
@@ -274,6 +304,7 @@ void init_rack_payload(RackPayload* payload, int idx, int rack_id)
 
 void process_rack_payload(RackPayload* payload, int idx, int rack_id)
 {
+    payload->seq_id = 0x555 + idx;
     payload->message_id = idx;
     payload->rack_id = rack_id;
     //payload->module_id = module_id;
@@ -492,7 +523,9 @@ void data_task(void *param)
 
                 // set up the message data in &rack_payloads[buff_num] where buff_num goes from 0 to BUFF_COUNT
 
-                RackPayload* rack_payload = &rack_payloads[buff_num];
+                RackPayload* rack_payload = &rack_payloads[0];
+                rack_payload->seq_id = 0x9999;
+                rack_payload = &rack_payloads[buff_num];
                 process_rack_payload(rack_payload, seq, rack_id);
                 
 
@@ -505,10 +538,24 @@ void data_task(void *param)
 
                 // now populate the buffers normally
                 tx_regs = (int32_t *)tx_buf;
+                //we send 
+                //   rpmsg_rack_data  module must match
+                //   sequence counter
+                //        data type
+                //        rack_id
+                //        data base
+                //        buff_num ( used to be seq)
+                //        offset into data area
+                //        data  size
+
+
                 tx_regs[0] = (int32_t)counter;
-                tx_regs[1] = seq++;
-                tx_regs[2] = buff_num;
-                tx_regs[3] = (int32_t)(buff_num * sizeof(RackPayload)); // we need the offfset from the start of shared memory
+                tx_regs[1] = 2;        // data_type  rack data
+                tx_regs[2] = rack_id;        // rack_id
+                tx_regs[3] = (int32_t)(&rack_payloads[0]); // we need the offfset from the start of shared memory
+                tx_regs[4] = buff_num;
+                tx_regs[5] = (int32_t)(buff_num * sizeof(RackPayload)); // we need the offfset from the start of shared memory
+                tx_regs[6] = (int32_t)(sizeof(RackPayload)); // we need the offfset from the start of shared memory
                     
                 buff_num = (buff_num+1) % BUFF_COUNT;
                 result = rpmsg_lite_send_nocopy(my_rpmsg, my_data_ept, data_remote_addr, tx_buf, size);
@@ -812,7 +859,7 @@ void data_create_task(void)
  */
 int main(void)
 {
-    srand(0xDEADBEEF);
+    srand(0xBEADBEEF);
 
 
     /* Initialize standard SDK demo application pins */
